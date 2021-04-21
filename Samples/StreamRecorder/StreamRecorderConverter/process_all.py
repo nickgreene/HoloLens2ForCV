@@ -12,6 +12,7 @@ from project_hand_eye_to_pv import project_hand_eye_to_pv
 from utils import check_framerates, extract_tar_file
 from save_pclouds import save_pclouds
 from convert_images import convert_images
+from process_videos import process_videos
 
 
 def process_all(w_path, project_hand_eye=False):
@@ -31,13 +32,17 @@ def process_all(w_path, project_hand_eye=False):
         # Project
         if project_hand_eye:
             project_hand_eye_to_pv(w_path)
+
 # Process depth if recorded
     for sensor_name in ["Depth Long Throw", "Depth AHaT"]:
         if (w_path / "{}.tar".format(sensor_name)).exists():
             # Save point clouds
             save_pclouds(w_path, sensor_name)
+
     print("")
     check_framerates(w_path)
+
+    process_videos(w_path)
 
 
 if __name__ == '__main__':
@@ -54,3 +59,5 @@ if __name__ == '__main__':
     w_path = Path(args.recording_path)
 
     process_all(w_path, args.project_hand_eye)
+
+
