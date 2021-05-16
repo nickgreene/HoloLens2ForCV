@@ -90,6 +90,10 @@ class RecorderShell(cmd.Cmd):
         except ValueError:
             print(f"I can't extract {arg}")
 
+    def do_process_all(self, arg):
+        for recording_idx in range(len(sorted(self.w_path.glob("*")))):
+            print(f"Processing Recording {recording_idx}")
+            self.do_process(recording_idx)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -243,6 +247,7 @@ def print_help():
     print("  delete X:                 Delete recording X from the HoloLens")
     print("  delete_all:               Delete all recordings from the HoloLens")
     print("  process X:                Process recording X ")
+    print("  process_all:              Process all recordings in the workspace")
 
 
 def list_workspace_recordings(w_path):
