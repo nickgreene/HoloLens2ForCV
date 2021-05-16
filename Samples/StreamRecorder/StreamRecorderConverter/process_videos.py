@@ -7,20 +7,41 @@ import imutils
 import numpy as np
 import argparse
 from pathlib import Path
+import ffmpeg
 
 REFLECTIVITY = 'REFLECTIVITY'
 PLY = 'PLY'
-AVI = 'avi'
+VIDEOS = 'videos'
+TEMP = 'temp'
+
+
+# (folder,        ext,  fps, rotate, max_sensor_val, scale, safe_name   )  
+# ('Depth AHaT', 'pgm', 60,  None,   1055,           'log', 'depth_ahat')
+sensors = [
+    ('VLC RF','pgm',60, 'l', None, None, 'vlc_rf'),
+    ('VLC LF','pgm',60, 'r', None, None, 'vlc_lf'),
+    # ('VLC LR','pgm',30, 'r'),
+    # ('VLC RR','pgm',30, 'r'),
+    ('Depth Long Throw','pgm', 60, None, 7442, None, 'depth_long_throw'),
+    # ('long_throw_reflectivity','pgm',30, None),
+    ('PV','png',60, None, None, None, 'pv'),
+    ('Depth AHaT','pgm', 60, None, 1055, None, 'depth_ahat'),
+    ('REFLECTIVITY','pgm',60, None, 10922, 'log', 'reflectivity')
+]
+
+
 
 def process_videos(root_dir_path):
     print("PROCESS_VIDEOS: ", root_dir_path)
 
+    # determing which kind of depth sensor was used
     depth_folder = None
     if os.path.exists(os.path.join(root_dir_path, 'Depth AHat')):
         depth_folder = 'Depth AHat'
     elif os.path.exists(os.path.join(root_dir_path, 'Depth Long Throw')):
         depth_folder = 'Depth Long Throw'
 
+    # move reflectivity images and depth images into separate folders
     if depth_folder is not None:
         if not os.path.isdir(os.path.join(root_dir_path,REFLECTIVITY)):
             os.mkdir(os.path.join(root_dir_path, REFLECTIVITY))
@@ -45,22 +66,13 @@ def process_videos(root_dir_path):
             os.replace(original_file_path, new_path)
 
 
+    # make video output path
+    if not os.path.isdir(os.path.join(root_dir_path, VIDEOS)):
+        os.mkdir(os.path.join(root_dir_path, VIDEOS))
 
-    #  folder, ext, fps, rotate, maxval)  
-    # ('Depth AHaT','pgm', 60, None, 1055)
-
-    sensors = [
-        ('VLC RF','pgm',60, 'l', None, None),
-        ('VLC LF','pgm',60, 'r', None, None),
-        # ('VLC LR','pgm',30, 'r'),
-        # ('VLC RR','pgm',30, 'r'),
-        ('Depth Long Throw','pgm', 30, None, 7442, None),
-        # ('long_throw_reflectivity','pgm',30, None),
-        ('PV','png',60, None, None, None),
-        ('Depth AHaT','pgm', 60, None, 1055, None),
-        ('REFLECTIVITY','pgm',60, None, 10922, 'log')
-    ]
-
+    # make temp path
+    if not os.path.isdir(os.path.join(root_dir_path, TEMP)):
+        os.mkdir(os.path.join(root_dir_path, TEMP))
 
     # initalize list to keep track of the min and max values for each sensor (to adjust the scaling)
     extremes = []
@@ -72,13 +84,14 @@ def process_videos(root_dir_path):
 
 
     for sensor_idx, sensor in enumerate(sensors):    
-        name, filetype, fps, rotate, maxval, scale = sensor
+        name, filetype, fps, rotate, maxval, scale, safe_name = sensor
         min_val, max_val = extremes[sensor_idx]
 
         print(sensor_idx, name)
 
-        if not os.path.isdir(os.path.join(root_dir_path, AVI)):
-            os.mkdir(os.path.join(root_dir_path, AVI))
+        # make temp path
+        if not os.path.isdir(os.path.join(root_dir_path, TEMP, safe_name)):
+            os.mkdir(os.path.join(root_dir_path, TEMP, safe_name))
 
         # if not os.path.isdir(f'./avi/{name}'):
         #     os.mkdir(f'./avi/{name}')
@@ -97,25 +110,27 @@ def process_videos(root_dir_path):
             fname = files[i]
             next_fname = files[i+1]
             
+            # get timestamps from filename
             timestamp = int(fname.split('\\')[-1].split('.')[0])       
             next_timestamp = int(next_fname.split('\\')[-1].split('.')[0])
             
+            temp_file_path = os.path.join(root_dir_path, TEMP, safe_name, f"{i:05d}.png")
+            file_list_path = temp_file_path.replace('\\', '/')
+
+            # set first timestamp 
             if first_timestamp is None:
                 first_timestamp = timestamp
 
-            # print('timestamp: ', timestamp)
-            # print('next_timestamp', next_timestamp)
-
-            # if timestamp < 132400215532731498:
-            if i < 600:
-                # print(i)
                 
-            # if True:
+            if True:
+                # load frame (raw data)
                 img = cv2.imread(fname, -1)
 
+                # store min and max of raw data
                 min_val = min(min_val, np.min(img))
                 max_val = max(max_val, np.max(img))
 
+                # scale raw image to better scale for visualizing
                 if maxval is not None:
                     raw = cv2.imread(fname, -1) / maxval
 
@@ -125,51 +140,66 @@ def process_videos(root_dir_path):
                     gray = (raw*255).astype('uint8')
                     img = cv2.cvtColor(gray,cv2.COLOR_GRAY2RGB)
                 
+                # otherwise, load non-raw data and let opencv handle it
                 else:
                     img = cv2.imread(fname)
 
-                # print(img.shape)
-                # print('min_val', min_val)
-                # print('max_val', max_val)
+
+                # rotate
                 if rotate == 'r':
                     img = imutils.rotate_bound(img, 90)
                 if rotate == 'l':
                     img = imutils.rotate_bound(img, -90)
-                # cv2.imshow('a',img)
-                # cv2.waitKey()
+
+
+                # all frames except the first frame
                 if previous_frame is not None:
                     next_frame = round((timestamp - first_timestamp) / round(10000000 / fps))
+
+                    # if frame time was longer than output frame rate, pad output with previous frame
                     for i in range(0, (next_frame - previous_frame) - 1):
-                        img_array.append(img_array[-1])
-                        # print("add")
-                    # print("frame", next_frame)
-                    img_array.append(img)
+                        img_array.append(file_list_path)
+
+
+                    img_array.append(file_list_path)
+                    cv2.imwrite(temp_file_path, img)
                     previous_frame = next_frame
+                
+                # First frame
                 else:
-                    img_array.append(img)
+                    img_array.append(file_list_path)
+                    cv2.imwrite(temp_file_path, img)
                     previous_frame = round((timestamp - first_timestamp) / round(10000000 / fps))
                 # Image.open(f'./pgm/{name}/{f}').save(f'./png/{name}/image{i:05}.png')
                 
 
         if len(img_array) > 0:
-            height = img_array[0].shape[0]
-            width = img_array[0].shape[1]
+            out_str = ""
+            for img_temp_path in img_array:
+                out_str = f"{out_str}file {img_temp_path}\n"
+            
+            file_list_path = os.path.join(root_dir_path, TEMP, safe_name, "files.txt")
 
-            size = (width,height)
+            with open(file_list_path, 'w') as f:
+                f.write(out_str)
 
-            out = cv2.VideoWriter(os.path.join(root_dir_path, AVI, f'{name}.avi'), cv2.VideoWriter_fourcc(*'DIVX'), fps, size)
+            output_video_path = os.path.join(root_dir_path, VIDEOS, f'{safe_name}.mp4')
 
-            for i in range(len(img_array)):
-                out.write(img_array[i])
-            out.release()   
+            (
+                ffmpeg
+                .input(file_list_path, format='concat', safe=0, r=fps)
+                .output(output_video_path, vcodec='libx264', pix_fmt='yuv420p', crf=23, r=fps)
+                .run(overwrite_output=True)
+            )
+
+            # concat stereo views with
+            # ffmpeg -r 60 -i depth_long_throw.mp4  -r 60 -i reflectivity.mp4 -filter_complex "hstack,format=yuv420p" -c:v libx264 -crf 18 -r 60 depth_reflectivity.mp4
 
         # print(sensor_idx)
         extremes[sensor_idx] = (min_val, max_val)
 
-
     for i in range(len(sensors)):
         print(sensors[i][0], 'min: ', extremes[i][0], 'max: ', extremes[i][1])
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process recorded data.')
