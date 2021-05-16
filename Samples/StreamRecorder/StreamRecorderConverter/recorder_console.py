@@ -14,6 +14,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 from process_all import process_all
+from process_videos import process_videos
 
 
 class RecorderShell(cmd.Cmd):
@@ -94,6 +95,22 @@ class RecorderShell(cmd.Cmd):
         for recording_idx in range(len(sorted(self.w_path.glob("*")))):
             print(f"Processing Recording {recording_idx}")
             self.do_process(recording_idx)
+
+    def do_process_videos(self, arg):
+        try:
+            recording_idx = int(arg)
+            if recording_idx is not None:
+                try:
+                    recording_names = sorted(self.w_path.glob("*"))
+                    recording_name = recording_names[recording_idx]
+                except IndexError:
+                    print("=> Recording does not exist")
+                else:
+                    process_videos(
+                        recording_name)
+        except ValueError:
+            print(f"I can't extract {arg}")
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -248,6 +265,8 @@ def print_help():
     print("  delete_all:               Delete all recordings from the HoloLens")
     print("  process X:                Process recording X ")
     print("  process_all:              Process all recordings in the workspace")
+    print("  process_videos X:         Create videos for recording X ")
+    # print("  process_videos_all:       Create videos for each se)
 
 
 def list_workspace_recordings(w_path):
