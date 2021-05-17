@@ -28,7 +28,7 @@ TEMP = 'processed_frames'
 sensors = [
     ('VLC RF',            'pgm',   'l',   None,   None,  'vlc_rf'          ),
     ('VLC LF',            'pgm',   'r',   None,   None,  'vlc_lf'          ),
-    ('VLC LR',            'pgm',   'r',   None,   None,  'vlc_lr'          ),
+    ('VLC LL',            'pgm',   'l',   None,   None,  'vlc_ll'          ),
     ('VLC RR',            'pgm',   'r',   None,   None,  'vlc_rr'          ),
     ('Depth Long Throw',  'pgm',  None,   7442,   None,  'depth_long_throw'),
     ('PV',                'png',  None,   None,   None,  'pv'              ),
@@ -40,7 +40,7 @@ sensors = [
 folder_names = [
     'VLC RF',
     'VLC LF',
-    'VLC LR',
+    'VLC LL',
     'VLC RR',
     'Depth Long Throw',
     'PV',
@@ -77,17 +77,36 @@ def process_all_no_point_clouds(w_path, project_hand_eye=False):
 # ffmpeg -r 60 -i depth_long_throw.mp4  -r 60 -i reflectivity.mp4 -filter_complex "hstack,format=yuv420p" -c:v libx264 -crf 18 -r 60 depth_reflectivity.mp4
 # concat two videos side by side
 def hstack_videos(root_dir_path, left_filename, right_filename, output_filename):
-    lf_video = os.path.join(root_dir_path, VIDEOS, left_filename)
-    rf_video = os.path.join(root_dir_path, VIDEOS, right_filename)
+    left_video = os.path.join(root_dir_path, VIDEOS, left_filename)
+    right_video = os.path.join(root_dir_path, VIDEOS, right_filename)
     stereo_vlc_front_output = os.path.join(root_dir_path, VIDEOS, output_filename)
-    if os.path.exists(lf_video) and os.path.exists(rf_video):
+    if os.path.exists(left_video) and os.path.exists(right_video):
         print(f"    Saving video: {output_filename}")
         (
             ffmpeg
-            .input(lf_video, r=OUTPUT_FRAME_RATE)
-            # .input(rf_video, r=OUTPUT_FRAME_RATE)
+            .input(left_video, r=OUTPUT_FRAME_RATE)
+            # .input(right_video, r=OUTPUT_FRAME_RATE)
             .output(stereo_vlc_front_output, vcodec='libx264', filter_complex='hstack,format=yuv420p', crf=0, r=OUTPUT_FRAME_RATE)
-            .global_args('-i', rf_video, '-loglevel', 'quiet')
+            .global_args('-i', right_video, '-loglevel', 'quiet')
+            .run(overwrite_output=True)
+        )
+
+    else:
+        print(f"    Skipping {output_filename}")
+
+
+def vstack_videos(root_dir_path, top_filename, bottom_filename, output_filename):
+    top_video = os.path.join(root_dir_path, VIDEOS, top_filename)
+    bottom_video = os.path.join(root_dir_path, VIDEOS, bottom_filename)
+    stereo_vlc_front_output = os.path.join(root_dir_path, VIDEOS, output_filename)
+    if os.path.exists(top_video) and os.path.exists(bottom_video):
+        print(f"    Saving video: {output_filename}")
+        (
+            ffmpeg
+            .input(top_video, r=OUTPUT_FRAME_RATE)
+            # .input(bottom_video, r=OUTPUT_FRAME_RATE)
+            .output(stereo_vlc_front_output, vcodec='libx264', filter_complex='vstack,format=yuv420p', crf=0, r=OUTPUT_FRAME_RATE)
+            .global_args('-i', bottom_video, '-loglevel', 'quiet')
             .run(overwrite_output=True)
         )
 
@@ -120,25 +139,28 @@ def process_videos(root_dir_path):
     if depth_folder is not None:
         if not os.path.isdir(os.path.join(root_dir_path,REFLECTIVITY)):
             os.mkdir(os.path.join(root_dir_path, REFLECTIVITY))
-        glob_path = os.path.join(root_dir_path, depth_folder, '*_ab.pgm')
-        files = glob.glob(glob_path)
-        for i in range(len(files)):
-            original_file_path = files[i]
-            filename = original_file_path.split('\\')[-1]
-            prefix = filename.split('.')[0]
-            prefix = prefix[0:-3]
-            new_path = os.path.join(root_dir_path, REFLECTIVITY, f'{prefix}.pgm')
-            os.replace(original_file_path, new_path)
+            print("Moving reflectivity images to separate folder")
+            glob_path = os.path.join(root_dir_path, depth_folder, '*_ab.pgm')
+            files = glob.glob(glob_path)
+            for i in range(len(files)):
+                original_file_path = files[i]
+                filename = original_file_path.split('\\')[-1]
+                prefix = filename.split('.')[0]
+                prefix = prefix[0:-3]
+                new_path = os.path.join(root_dir_path, REFLECTIVITY, f'{prefix}.pgm')
+                os.replace(original_file_path, new_path)
 
-        if not os.path.isdir(os.path.join(root_dir_path, PLY)):
-            os.mkdir(os.path.join(root_dir_path, PLY))
-        glob_path = os.path.join(root_dir_path, depth_folder, '*.ply')
-        files = glob.glob(glob_path)
-        for i in range(len(files)):
-            original_file_path = files[i]
-            filename = original_file_path.split('\\')[-1]
-            new_path = os.path.join(root_dir_path, PLY, filename)
-            os.replace(original_file_path, new_path)
+            if not os.path.isdir(os.path.join(root_dir_path, PLY)):
+                os.mkdir(os.path.join(root_dir_path, PLY))
+            glob_path = os.path.join(root_dir_path, depth_folder, '*.ply')
+            files = glob.glob(glob_path)
+            for i in range(len(files)):
+                original_file_path = files[i]
+                filename = original_file_path.split('\\')[-1]
+                new_path = os.path.join(root_dir_path, PLY, filename)
+                os.replace(original_file_path, new_path)
+        else:
+            print("Reflectivity folder found. Skipping moving reflectivity images")
 
 
     # make video output path
@@ -167,116 +189,144 @@ def process_videos(root_dir_path):
         print(sensor_idx, name)
         min_val, max_val = extremes[sensor_idx]
 
-        # make temp path
+        # make temp path and process videos. If it already exists, skip the whole thing
         if not os.path.isdir(os.path.join(root_dir_path, TEMP, safe_name)):
             os.mkdir(os.path.join(root_dir_path, TEMP, safe_name))
 
         
-        # this block loads all of the files and applies the appropriate adjustments to them (rotation and scaling)
-        img_array = []
-        glob_path = os.path.join(root_dir_path, name, f'*.{filetype}')
-        files = glob.glob(glob_path)
-        sorted(files)
-        first_timestamp = None
-        
-        previous_frame = None
-        for i in range(0, len(files) - 1):
-            fname = files[i]
-            next_fname = files[i+1]
+            # this block loads all of the files and applies the appropriate adjustments to them (rotation and scaling)
+            img_array = []
+            glob_path = os.path.join(root_dir_path, name, f'*.{filetype}')
+            files = glob.glob(glob_path)
+            sorted(files)
+            first_timestamp = None
             
-            # get timestamps from filename
-            timestamp = int(fname.split('\\')[-1].split('.')[0])       
-            next_timestamp = int(next_fname.split('\\')[-1].split('.')[0])
-            
-            temp_file_path = os.path.join(root_dir_path, TEMP, safe_name, f"{i:05d}.png")
-            file_list_path = temp_file_path.replace('\\', '/')
-
-            # set first timestamp 
-            if first_timestamp is None:
-                first_timestamp = timestamp
-
+            previous_frame = None
+            for i in range(0, len(files) - 1):
+                fname = files[i]
+                next_fname = files[i+1]
                 
-            # load frame (raw data)
-            img = cv2.imread(fname, -1)
+                # get timestamps from filename
+                timestamp = int(fname.split('\\')[-1].split('.')[0])       
+                next_timestamp = int(next_fname.split('\\')[-1].split('.')[0])
+                
+                temp_file_path = os.path.join(root_dir_path, TEMP, safe_name, f"{i:05d}.png")
+                file_list_path = temp_file_path.replace('\\', '/')
 
-            # store min and max of raw data
-            min_val = min(min_val, np.min(img))
-            max_val = max(max_val, np.max(img))
+                # set first timestamp 
+                if first_timestamp is None:
+                    first_timestamp = timestamp
 
-            # scale raw image to better scale for visualizing
-            if maxval is not None:
-                raw = cv2.imread(fname, -1) / maxval
+                    
+                # load frame (raw data)
+                img = cv2.imread(fname, -1)
 
-                if scale == 'log':
-                    raw = np.log(raw*1000 + 1) / np.log(1001)
+                # store min and max of raw data
+                min_val = min(min_val, np.min(img))
+                max_val = max(max_val, np.max(img))
 
-                gray = (raw*255).astype('uint8')
-                img = cv2.cvtColor(gray,cv2.COLOR_GRAY2RGB)
-            
-            # otherwise, load non-raw data and let opencv handle it
-            else:
-                img = cv2.imread(fname)
+                # scale raw image to better scale for visualizing
+                if maxval is not None:
+                    raw = cv2.imread(fname, -1) / maxval
+
+                    if scale == 'log':
+                        raw = np.log(raw*1000 + 1) / np.log(1001)
+
+                    gray = (raw*255).astype('uint8')
+                    img = cv2.cvtColor(gray,cv2.COLOR_GRAY2RGB)
+                
+                # otherwise, load non-raw data and let opencv handle it
+                else:
+                    img = cv2.imread(fname)
 
 
-            # rotate
-            if rotate == 'r':
-                img = imutils.rotate_bound(img, 90)
-            if rotate == 'l':
-                img = imutils.rotate_bound(img, -90)
+                # rotate
+                if rotate == 'r':
+                    img = imutils.rotate_bound(img, 90)
+                if rotate == 'l':
+                    img = imutils.rotate_bound(img, -90)
 
 
-            # all frames except the first frame
-            if previous_frame is not None:
-                next_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
+                # all frames except the first frame
+                if previous_frame is not None:
+                    next_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
 
-                # if frame time was longer than output frame rate, pad output with previous frame
-                for i in range(0, (next_frame - previous_frame) - 1):
+                    # if frame time was longer than output frame rate, pad output with previous frame
+                    for i in range(0, (next_frame - previous_frame) - 1):
+                        img_array.append(file_list_path)
+
+
                     img_array.append(file_list_path)
-
-
-                img_array.append(file_list_path)
-                cv2.imwrite(temp_file_path, img)
-                previous_frame = next_frame
-            
-            # First frame
-            else:
-                img_array.append(file_list_path)
-                cv2.imwrite(temp_file_path, img)
-                previous_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
+                    cv2.imwrite(temp_file_path, img)
+                    previous_frame = next_frame
                 
-        
-        # this block creates the video by writing the adjusted frames to a temporary folder and then creating a list of the frames for ffmpeg
-        # Note that long frames are repeated multiple times in the list to match the output fps.
-        if len(img_array) > 0:
-            out_str = ""
-            for img_temp_path in img_array:
-                out_str = f"{out_str}file {img_temp_path}\n"
+                # First frame
+                else:
+                    img_array.append(file_list_path)
+                    cv2.imwrite(temp_file_path, img)
+                    previous_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
+                    
             
-            file_list_path = os.path.join(root_dir_path, TEMP, safe_name, "files.txt")
+            # this block creates the video by writing the adjusted frames to a temporary folder and then creating a list of the frames for ffmpeg
+            # Note that long frames are repeated multiple times in the list to match the output fps.
+            if len(img_array) > 0:
+                out_str = ""
+                for img_temp_path in img_array:
+                    out_str = f"{out_str}file {img_temp_path}\n"
+                
+                file_list_path = os.path.join(root_dir_path, TEMP, safe_name, "files.txt")
 
-            with open(file_list_path, 'w') as f:
-                f.write(out_str)
+                with open(file_list_path, 'w') as f:
+                    f.write(out_str)
 
-            output_video_path = os.path.join(root_dir_path, VIDEOS, f'{safe_name}.mp4')
-            print(f"    Saving video: {safe_name}.mp4")
-            (
-                ffmpeg
-                .input(file_list_path, format='concat', safe=0, r=OUTPUT_FRAME_RATE)
-                .output(output_video_path, vcodec='libx264', pix_fmt='yuv420p', crf=0, r=OUTPUT_FRAME_RATE)
-                .global_args('-loglevel', 'quiet')
-                .run(overwrite_output=True)
-            )
+                output_video_path = os.path.join(root_dir_path, VIDEOS, f'{safe_name}.mp4')
+                print(f"    Saving video: {safe_name}.mp4")
+                (
+                    ffmpeg
+                    .input(file_list_path, format='concat', safe=0, r=OUTPUT_FRAME_RATE)
+                    .output(output_video_path, vcodec='libx264', pix_fmt='yuv420p', crf=0, r=OUTPUT_FRAME_RATE)
+                    .global_args('-loglevel', 'quiet')
+                    .run(overwrite_output=True)
+                )
 
+        else:
+            print(f"    Found {safe_name} processed frames. Skipping")
 
         # print(sensor_idx)
         extremes[sensor_idx] = (min_val, max_val)
 
 
     print("* Creating side by side videos")
+    
     # concat stereo views
-    hstack_videos(root_dir_path, 'vlc_lf.mp4', 'vlc_rf.mp4', 'vlc_front_stero.mp4')
-    hstack_videos(root_dir_path, 'depth_long_throw.mp4', 'reflectivity.mp4', 'depth_long_throw_and_reflectivity.mp4')
-    hstack_videos(root_dir_path, 'depth_ahat.mp4', 'reflectivity.mp4', 'depth_ahat_and_reflectivity.mp4')
+    if not os.path.exists(os.path.join(root_dir_path, VIDEOS, 'vlc_front_stero.mp4')):
+        hstack_videos(root_dir_path, 'vlc_lf.mp4', 'vlc_rf.mp4', 'vlc_front_stero.mp4')
+    else:
+        print('    Found vlc_front_stero.mp4. Skipping')
+
+
+    if not os.path.exists(os.path.join(root_dir_path, VIDEOS, 'depth_long_throw_and_reflectivity.mp4')):
+        hstack_videos(root_dir_path, 'depth_long_throw.mp4', 'reflectivity.mp4', 'depth_long_throw_and_reflectivity.mp4')
+    else:
+        print('    Found depth_long_throw_and_reflectivity.mp4. Skipping')
+
+
+    if not os.path.exists(os.path.join(root_dir_path, VIDEOS, 'depth_ahat_and_reflectivity.mp4')):
+        hstack_videos(root_dir_path, 'depth_ahat.mp4', 'reflectivity.mp4', 'depth_ahat_and_reflectivity.mp4')
+    else:
+        print('    Found depth_ahat_and_reflectivity.mp4. Skipping')
+
+
+    if not os.path.exists(os.path.join(root_dir_path, VIDEOS, 'vlc_rear_stero.mp4')):
+        hstack_videos(root_dir_path, 'vlc_ll.mp4', 'vlc_rr.mp4', 'vlc_rear_stero.mp4')
+    else:
+        print('    Found vlc_rear_stero.mp4. Skipping')
+
+
+    if not os.path.exists(os.path.join(root_dir_path, VIDEOS, 'vlc_all.mp4')):
+        vstack_videos(root_dir_path, 'vlc_front_stero.mp4', 'vlc_rear_stero.mp4', 'vlc_all.mp4')
+    else:
+        print('    Found vlc_all.mp4. Skipping')
 
 
     for i in range(len(sensors)):
