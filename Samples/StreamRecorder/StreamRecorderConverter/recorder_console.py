@@ -111,6 +111,11 @@ class RecorderShell(cmd.Cmd):
         except ValueError:
             print(f"I can't extract {arg}")
 
+    def do_process_videos_all(self, arg):
+        for recording_idx in range(len(sorted(self.w_path.glob("*")))):
+            print(f"Processing Recording {recording_idx}")
+            self.do_process_videos(recording_idx)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
