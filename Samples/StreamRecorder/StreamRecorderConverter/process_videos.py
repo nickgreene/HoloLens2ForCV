@@ -22,6 +22,8 @@ PLY = 'PLY'
 VIDEOS = 'videos'
 TEMP = 'processed_frames'
 
+TIMESTAMP_DIVISOR = 10000000
+
 
 # (folder,         ext,   rotate,  max_sensor_val,  scale,     safe_name)  
 # ('Depth AHaT',  'pgm',    None,            1055,  'log',  'depth_ahat')
@@ -249,30 +251,32 @@ def process_videos(root_dir_path):
 
                 # all frames except the first frame
                 if previous_frame is not None:
-                    next_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
+                    next_frame = round((timestamp - first_timestamp) / round(TIMESTAMP_DIVISOR / OUTPUT_FRAME_RATE))
 
                     # if frame time was longer than output frame rate, pad output with previous frame
                     for i in range(0, (next_frame - previous_frame) - 1):
-                        img_array.append(file_list_path)
+                        img_array.append(f"file {file_list_path}")
 
 
-                    img_array.append(file_list_path)
+                    img_array.append(f"file {file_list_path}")
                     cv2.imwrite(temp_file_path, img)
                     previous_frame = next_frame
                 
                 # First frame
                 else:
-                    img_array.append(file_list_path)
+                    img_array.append(f"file {file_list_path}")
                     cv2.imwrite(temp_file_path, img)
-                    previous_frame = round((timestamp - first_timestamp) / round(10000000 / OUTPUT_FRAME_RATE))
+                    previous_frame = round((timestamp - first_timestamp) / round(TIMESTAMP_DIVISOR / OUTPUT_FRAME_RATE))
                     
             
             # this block creates the video by writing the adjusted frames to a temporary folder and then creating a list of the frames for ffmpeg
             # Note that long frames are repeated multiple times in the list to match the output fps.
             if len(img_array) > 0:
-                out_str = ""
-                for img_temp_path in img_array:
-                    out_str = f"{out_str}file {img_temp_path}\n"
+
+                print("IMAGE ARRAY LENGTH: ", len(img_array))
+
+                out_str = "\n".join(img_array)
+
                 
                 file_list_path = os.path.join(root_dir_path, TEMP, safe_name, "files.txt")
 

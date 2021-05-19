@@ -34,7 +34,7 @@ enum class ButtonID
 	DEPTH_LONG_THROW
 }*/
 // Note that concurrent access to AHAT and Long Throw is currently not supported
-std::vector<ResearchModeSensorType> AppMain::kEnabledRMStreamTypes = { ResearchModeSensorType::DEPTH_LONG_THROW };
+std::vector<ResearchModeSensorType> AppMain::kEnabledRMStreamTypes = { ResearchModeSensorType::DEPTH_LONG_THROW, ResearchModeSensorType::LEFT_FRONT, ResearchModeSensorType::RIGHT_FRONT };
 /* Supported not-ResearchMode streams:
 {
 	PV,  // RGB
